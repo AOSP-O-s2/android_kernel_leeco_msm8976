@@ -2004,6 +2004,10 @@ static void binder_transaction(struct binder_proc *proc,
 				return_error = BR_FAILED_REPLY;
 				goto err_binder_get_ref_for_node_failed;
 			}
+			if (security_binder_transfer_binder(proc->tsk, target_proc->tsk)) {
+				return_error = BR_FAILED_REPLY;
+				goto err_binder_get_ref_for_node_failed;
+			}
 			ref = binder_get_ref_for_node(target_proc, node);
 			if (ref == NULL) {
 				return_error = BR_FAILED_REPLY;
@@ -2037,6 +2041,10 @@ static void binder_transaction(struct binder_proc *proc,
 				binder_user_error("%d:%d got transaction with invalid handle, %d\n",
 						proc->pid,
 						thread->pid, fp->handle);
+				return_error = BR_FAILED_REPLY;
+				goto err_binder_get_ref_failed;
+			}
+			if (security_binder_transfer_binder(proc->tsk, target_proc->tsk)) {
 				return_error = BR_FAILED_REPLY;
 				goto err_binder_get_ref_failed;
 			}
@@ -2104,12 +2112,14 @@ static void binder_transaction(struct binder_proc *proc,
 				return_error = BR_FAILED_REPLY;
 				goto err_bad_parent;
 			}
-			if (!binder_validate_fixup(t->buffer, off_start,
-						   parent, fda->parent_offset,
-						   last_fixup_obj,
-						   last_fixup_min_off)) {
-				binder_user_error("%d:%d got transaction with out-of-order buffer fixup\n",
-						  proc->pid, thread->pid);
+			if (security_binder_transfer_file(proc->tsk, target_proc->tsk, file) < 0) {
+				fput(file);
+				return_error = BR_FAILED_REPLY;
+				goto err_get_unused_fd_failed;
+			}
+			target_fd = task_get_unused_fd_flags(target_proc, O_CLOEXEC);
+			if (target_fd < 0) {
+				fput(file);
 				return_error = BR_FAILED_REPLY;
 				goto err_bad_parent;
 			}
@@ -3173,8 +3183,8 @@ static int binder_ioctl_set_ctx_mgr(struct file *filp)
 	ret = security_binder_set_context_mgr(proc->tsk);
 	if (ret < 0)
 		goto out;
-	if (uid_valid(context->binder_context_mgr_uid)) {
-		if (!uid_eq(context->binder_context_mgr_uid, curr_euid)) {
+	if (uid_valid(binder_context_mgr_uid)) {
+		if (!uid_eq(binder_context_mgr_uid, curr_euid)) {
 			pr_err("BINDER_SET_CONTEXT_MGR bad uid %d != %d\n",
 			       from_kuid(&init_user_ns, curr_euid),
 			       from_kuid(&init_user_ns,
