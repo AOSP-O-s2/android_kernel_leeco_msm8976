@@ -223,10 +223,12 @@ static struct binder_transaction_log_entry *binder_transaction_log_add(
 struct binder_context {
 	struct binder_node *binder_context_mgr_node;
 	kuid_t binder_context_mgr_uid;
+	const char *name;
 };
 
 static struct binder_context global_context = {
 	.binder_context_mgr_uid = INVALID_UID,
+	.name = "binder",
 };
 
 struct binder_work {
